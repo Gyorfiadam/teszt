@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Math Notes → OneNote</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    /* Smooth custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 9999px;
+    }
+  </style>
+</head>
+<body class="min-h-screen antialiased selection:bg-purple-100 selection:text-purple-900">
+
+  <!-- Hidden container used for rich HTML clipboard copying into OneNote -->
+  <div id="richCopyContainer" style="position: fixed; left: -9999px; top: 0; opacity: 0; pointer-events: none; display: none;"></div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden transform transition-all duration-300">
+    <div id="toastBox" class="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg bg-slate-900 text-white text-sm font-medium">
+      <span id="toastText">Notification</span>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       1. PASSWORD LOCK SCREEN (Password: 42)
+       ========================================== -->
+  <div id="lockScreen" class="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+    <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8">
+      <div class="w-12 h-12 rounded-xl bg-purple-700 text-white flex items-center justify-center mx-auto mb-5 shadow-sm">
+        <!-- Notebook Icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+      </div>
+
+      <h1 class="text-xl font-bold text-center text-slate-900">Math Notes</h1>
+      <p class="text-sm text-center text-slate-500 mt-1 mb-6">Enter password to view or upload notes</p>
+
+      <form id="passwordForm" class="space-y-4">
+        <div>
+          <input
+            id="passwordInput"
+            type="password"
+            placeholder="Password"
+            autofocus
+            class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-slate-50/50 text-center text-lg font-semibold tracking-widest focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-600/20 focus:border-purple-600 transition-all"
+          />
+          <p id="passwordError" class="hidden text-xs text-red-600 text-center mt-2 font-medium">
+            Incorrect password. Please try again.
+          </p>
+        </div>
+
+        <button
+          type="submit"
+          class="w-full py-3 px-4 rounded-xl bg-purple-700 hover:bg-purple-800 active:scale-[0.99] text-white font-semibold text-sm shadow-sm transition-all"
+        >
+          Unlock
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       2. MAIN MINIMALIST PORTAL
+       ========================================== -->
+  <div id="appScreen" class="hidden min-h-screen flex flex-col">
+    <!-- Clean Header -->
+    <header class="bg-white border-b border-slate-200/80 sticky top-0 z-20">
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-lg bg-purple-700 text-white flex items-center justify-center font-bold text-sm">
+            M
+          </div>
+          <div>
+            <h1 class="text-base font-bold text-slate-900 leading-tight">Math Notes → OneNote</h1>
+            <p id="syncStatusText" class="text-xs text-slate-400">Connecting...</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button
+            id="openUploadBtn"
+            class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Upload Note</span>
+          </button>
+
+          <button
+            id="lockBtn"
+            title="Lock Portal"
+            class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-4xl mx-auto w-full px-4 sm:px-6 py-8 flex-1 space-y-6">
+
+      <!-- Collapsible Upload Card -->
+      <section id="uploadSection" class="hidden bg-white rounded-2xl border border-slate-200/90 p-6 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-base font-bold text-slate-900">New Math Note</h2>
+          <button id="closeUploadBtn" type="button" class="text-slate-400 hover:text-slate-600 p-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <form id="uploadForm" class="space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Title</label>
+            <input
+              id="noteTitleInput"
+              type="text"
+              placeholder="e.g., Homework #4 or Derivative Notes"
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-purple-600 transition-all"
+            />
+          </div>
+
+          <!-- File Dropzone -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">File (Photo, PDF, or Word Doc)</label>
+            <div id="fileDropArea" class="border-2 border-dashed border-slate-200 hover:border-purple-500 rounded-xl p-5 text-center bg-slate-50/50 transition-all">
+              <label id="fileSelectLabel" class="cursor-pointer block">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-purple-600 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                </svg>
+                <span class="text-sm font-semibold text-slate-700 block">Choose a file or photo</span>
+                <span class="text-xs text-slate-400 mt-0.5 block">Images (JPG, PNG), PDF, DOCX (Max 5 MB)</span>
+                <input id="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt" class="hidden" />
+              </label>
+
+              <!-- Selected File Pill -->
+              <div id="selectedFileBox" class="hidden items-center justify-between bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 text-left">
+                <div class="min-w-0 pr-3">
+                  <p id="selectedFileName" class="text-sm font-semibold text-slate-800 truncate"></p>
+                  <p id="selectedFileSize" class="text-xs text-slate-400"></p>
+                </div>
+                <button id="clearFileBtn" type="button" class="text-xs font-semibold text-red-600 hover:underline shrink-0">
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Optional Written Text -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Notes / Equations (Optional)</label>
+            <textarea
+              id="noteTextInput"
+              rows="3"
+              placeholder="Write any additional notes or formulas here..."
+              class="w-full p-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-purple-600 transition-all"
+            ></textarea>
+          </div>
+
+          <div class="flex items-center justify-end gap-2 pt-1">
+            <button
+              id="cancelUploadBtn"
+              type="button"
+              class="px-4 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-100 transition-all"
+            >
+              Cancel
+            </button>
+            <button
+              id="submitNoteBtn"
+              type="submit"
+              class="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
+            >
+              Save Note
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Notes List Container -->
+      <section id="notesListContainer" class="space-y-4">
+        <div class="text-center py-12 text-sm text-slate-400">Loading notes...</div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ==========================================
+       3. IMAGE PREVIEW LIGHTBOX MODAL
+       ========================================== -->
+  <div id="imageModal" class="fixed inset-0 z-50 hidden bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center">
+      <button
+        id="closeImageModalBtn"
+        class="mb-3 px-3.5 py-1.5 rounded-full bg-white/15 hover:bg-white/25 text-white text-xs font-semibold backdrop-blur-md transition-all"
+      >
+        Close Preview ✕
+      </button>
+      <img id="modalImageElement" src="" alt="Preview" class="max-w-full max-h-[82vh] object-contain rounded-xl shadow-2xl bg-white" />
+    </div>
+  </div>
+
+  <!-- ==========================================
+       4. APPLICATION LOGIC & FIREBASE SYNC
+       ========================================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Constants
+    const CHUNK_SIZE = 650 * 1024; // ~650KB per chunk for Firestore 1MB limit
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+    // State
+    let db = null;
+    let auth = null;
+    let currentUser = null;
+    let useCloudStorage = false;
+    let notes = [];
+    let chunksMap = {};
+    let pendingFile = null;
+
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'math-onenote-clean-portal';
+
+    // DOM Elements
+    const lockScreen = document.getElementById('lockScreen');
+    const appScreen = document.getElementById('appScreen');
+    const passwordForm = document.getElementById('passwordForm');
+    const passwordInput = document.getElementById('passwordInput');
+    const passwordError = document.getElementById('passwordError');
+    const lockBtn = document.getElementById('lockBtn');
+    const syncStatusText = document.getElementById('syncStatusText');
+
+    const openUploadBtn = document.getElementById('openUploadBtn');
+    const closeUploadBtn = document.getElementById('closeUploadBtn');
+    const cancelUploadBtn = document.getElementById('cancelUploadBtn');
+    const uploadSection = document.getElementById('uploadSection');
+    const uploadForm = document.getElementById('uploadForm');
+    const noteTitleInput = document.getElementById('noteTitleInput');
+    const noteTextInput = document.getElementById('noteTextInput');
+    const fileInput = document.getElementById('fileInput');
+    const fileSelectLabel = document.getElementById('fileSelectLabel');
+    const selectedFileBox = document.getElementById('selectedFileBox');
+    const selectedFileName = document.getElementById('selectedFileName');
+    const selectedFileSize = document.getElementById('selectedFileSize');
+    const clearFileBtn = document.getElementById('clearFileBtn');
+    const submitNoteBtn = document.getElementById('submitNoteBtn');
+
+    const notesListContainer = document.getElementById('notesListContainer');
+    const richCopyContainer = document.getElementById('richCopyContainer');
+    const imageModal = document.getElementById('imageModal');
+    const modalImageElement = document.getElementById('modalImageElement');
+    const closeImageModalBtn = document.getElementById('closeImageModalBtn');
+
+    // Toast Helper
+    function showToast(message, isError = false) {
+      const toast = document.getElementById('toast');
+      const toastBox = document.getElementById('toastBox');
+      const toastText = document.getElementById('toastText');
+      toastText.textContent = message;
+      toastBox.className = `flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+        isError ? 'bg-red-600 text-white' : 'bg-slate-900 text-white'
+      }`;
+      toast.classList.remove('hidden');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+      }, 3200);
+    }
+
+    // Escape HTML safely
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // ==========================================
+    // PASSWORD GATE ('42')
+    // ==========================================
+    passwordForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (passwordInput.value.trim() === '42') {
+        passwordError.classList.add('hidden');
+        lockScreen.classList.add('hidden');
+        appScreen.classList.remove('hidden');
+      } else {
+        passwordError.classList.remove('hidden');
+      }
+    });
+
+    lockBtn.addEventListener('click', () => {
+      passwordInput.value = '';
+      appScreen.classList.add('hidden');
+      lockScreen.classList.remove('hidden');
+      passwordInput.focus();
+    });
+
+    // ==========================================
+    // UPLOAD FORM UI HANDLERS
+    // ==========================================
+    openUploadBtn.addEventListener('click', () => {
+      uploadSection.classList.remove('hidden');
+      noteTitleInput.focus();
+    });
+
+    const hideUploadSection = () => {
+      uploadSection.classList.add('hidden');
+    };
+    closeUploadBtn.addEventListener('click', hideUploadSection);
+    cancelUploadBtn.addEventListener('click', hideUploadSection);
+
+    function resetUploadForm() {
+      noteTitleInput.value = '';
+      noteTextInput.value = '';
+      fileInput.value = '';
+      pendingFile = null;
+      selectedFileBox.classList.add('hidden');
+      selectedFileBox.classList.remove('flex');
+      fileSelectLabel.classList.remove('hidden');
+    }
+
+    clearFileBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      pendingFile = null;
+      selectedFileBox.classList.add('hidden');
+      selectedFileBox.classList.remove('flex');
+      fileSelectLabel.classList.remove('hidden');
+    });
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      if (file.size > MAX_FILE_SIZE) {
+        showToast('File is over 5 MB. Please pick a smaller file.', true);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const rawDataUrl = ev.target.result;
+
+        // Compress large images automatically for smooth OneNote copy/paste
+        if (file.type.startsWith('image/') && file.size > 700 * 1024) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 1600;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const compressed = canvas.toDataURL('image/jpeg', 0.85);
+            setPendingFileObj({
+              name: file.name,
+              type: 'image/jpeg',
+              size: Math.round((compressed.length * 3) / 4),
+              dataUrl: compressed
+            });
+          };
+          img.src = rawDataUrl;
+        } else {
+          setPendingFileObj({
+            name: file.name,
+            type: file.type || 'application/octet-stream',
+            size: file.size,
+            dataUrl: rawDataUrl
+          });
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function setPendingFileObj(fileObj) {
+      pendingFile = fileObj;
+      if (!noteTitleInput.value.trim()) {
+        noteTitleInput.value = fileObj.name.replace(/\.[^/.]+$/, '');
+      }
+      selectedFileName.textContent = fileObj.name;
+      selectedFileSize.textContent = `${(fileObj.size / 1024).toFixed(1)} KB`;
+      fileSelectLabel.classList.add('hidden');
+      selectedFileBox.classList.remove('hidden');
+      selectedFileBox.classList.add('flex');
+    }
+
+    // ==========================================
+    // FIREBASE INITIALIZATION
+    // ==========================================
+    async function initStorage() {
+      try {
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          const firebaseConfig = JSON.parse(__firebase_config);
+          if (firebaseConfig && firebaseConfig.projectId) {
+            const app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+            useCloudStorage = true;
+
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await signInWithCustomToken(auth, __initial_auth_token);
+            } else {
+              await signInAnonymously(auth);
+            }
+
+            onAuthStateChanged(auth, (user) => {
+              currentUser = user;
+              if (user) {
+                syncStatusText.textContent = 'Synced with Teacher & Student';
+                subscribeToFirestore();
+              }
+            });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('Firebase init fallback:', err);
+      }
+
+      // If embedded externally without __firebase_config
+      syncStatusText.textContent = 'Ready';
+      renderNotes();
+    }
+
+    function subscribeToFirestore() {
+      if (!currentUser || !db) return;
+
+      const notesCol = collection(db, 'artifacts', appId, 'public', 'data', 'math_notes');
+      const chunksCol = collection(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks');
+
+      onSnapshot(
+        notesCol,
+        (snap) => {
+          notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          notes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+          renderNotes();
+        },
+        (err) => console.error('Notes snapshot error:', err)
+      );
+
+      onSnapshot(
+        chunksCol,
+        (snap) => {
+          const map = {};
+          snap.docs.forEach((d) => {
+            const data = d.data();
+            if (data.noteId) {
+              if (!map[data.noteId]) map[data.noteId] = [];
+              map[data.noteId].push(data);
+            }
+          });
+          Object.keys(map).forEach((id) => {
+            map[id].sort((a, b) => a.chunkIndex - b.chunkIndex);
+          });
+          chunksMap = map;
+          renderNotes();
+        },
+        (err) => console.error('Chunks snapshot error:', err)
+      );
+    }
+
+    function getFileDataUrl(note) {
+      if (!note) return null;
+      if (note.inlineDataUrl) return note.inlineDataUrl;
+      if (!note.hasFileChunks) return null;
+      const cList = chunksMap[note.id];
+      if (!cList || cList.length < (note.totalChunks || 1)) return null;
+      return cList.map((c) => c.data).join('');
+    }
+
+    // ==========================================
+    // UPLOAD / SAVE NOTE
+    // ==========================================
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = noteTitleInput.value.trim() || (pendingFile ? pendingFile.name : 'Math Note');
+      const textContent = noteTextInput.value.trim();
+
+      if (!textContent && !pendingFile) {
+        showToast('Please attach a file or write a note.', true);
+        return;
+      }
+
+      submitNoteBtn.disabled = true;
+      submitNoteBtn.textContent = 'Uploading...';
+
+      try {
+        const noteId = `note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        let inlineDataUrl = null;
+        let hasFileChunks = false;
+        let totalChunks = 0;
+
+        if (pendingFile && pendingFile.dataUrl) {
+          const fullStr = pendingFile.dataUrl;
+          if (!useCloudStorage || fullStr.length <= 450 * 1024) {
+            inlineDataUrl = fullStr;
+          } else {
+            hasFileChunks = true;
+            const chunks = [];
+            for (let i = 0; i < fullStr.length; i += CHUNK_SIZE) {
+              chunks.push(fullStr.slice(i, i + CHUNK_SIZE));
+            }
+            totalChunks = chunks.length;
+
+            for (let idx = 0; idx < chunks.length; idx++) {
+              submitNoteBtn.textContent = `Uploading ${idx + 1}/${totalChunks}...`;
+              const chunkDocId = `${noteId}_chunk_${idx}`;
+              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks', chunkDocId), {
+                noteId,
+                chunkIndex: idx,
+                data: chunks[idx],
+                createdAt: Date.now()
+              });
+            }
+          }
+        }
+
+        const notePayload = {
+          title,
+          textContent,
+          fileName: pendingFile ? pendingFile.name : null,
+          fileType: pendingFile ? pendingFile.type : null,
+          fileSize: pendingFile ? pendingFile.size : null,
+          inlineDataUrl,
+          hasFileChunks,
+          totalChunks,
+          createdAt: Date.now()
+        };
+
+        if (useCloudStorage && currentUser) {
+          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_notes', noteId), notePayload);
+        } else {
+          notes.unshift({ id: noteId, ...notePayload });
+          renderNotes();
+        }
+
+        resetUploadForm();
+        hideUploadSection();
+        showToast('Note uploaded!');
+      } catch (err) {
+        console.error('Upload error:', err);
+        showToast('Failed to upload note. Try a smaller file.', true);
+      } finally {
+        submitNoteBtn.disabled = false;
+        submitNoteBtn.textContent = 'Save Note';
+      }
+    });
+
+    // ==========================================
+    // RENDER CLEAN NOTES LIST
+    // ==========================================
+    function renderNotes() {
+      if (notes.length === 0) {
+        notesListContainer.innerHTML = `
+          <div class="bg-white rounded-2xl border border-slate-200/80 p-12 text-center">
+            <p class="text-base font-semibold text-slate-700">No math notes yet</p>
+            <p class="text-sm text-slate-400 mt-1">Click "Upload Note" at the top to add your first file or note.</p>
+          </div>
+        `;
+        return;
+      }
+
+      notesListContainer.innerHTML = notes
+        .map((note) => {
+          const fileUrl = getFileDataUrl(note);
+          const isImage = note.fileType && note.fileType.startsWith('image/');
+          const dateStr = new Date(note.createdAt || Date.now()).toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+
+          return `
+            <article class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs hover:border-slate-300 transition-all space-y-4">
+              <!-- Note Header -->
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">${escapeHtml(note.title)}</h3>
+                  <p class="text-xs text-slate-400 mt-0.5">${escapeHtml(dateStr)}</p>
+                </div>
+
+                <button
+                  data-action="delete"
+                  data-id="${note.id}"
+                  title="Delete Note"
+                  class="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Written Note Content -->
+              ${
+                note.textContent
+                  ? `<div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">${escapeHtml(
+                      note.textContent
+                    )}</div>`
+                  : ''
+              }
+
+              <!-- File / Image Preview -->
+              ${
+                note.fileName
+                  ? isImage && fileUrl
+                    ? `<div class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-h-72 flex items-center justify-center">
+                        <img
+                          src="${fileUrl}"
+                          alt="${escapeHtml(note.title)}"
+                          data-action="preview-image"
+                          data-id="${note.id}"
+                          class="max-h-72 w-auto object-contain cursor-zoom-in hover:opacity-95 transition-opacity"
+                        />
+                      </div>`
+                    : `<div class="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                        <div class="flex items-center gap-3 min-w-0">
+                          <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">
+                            FILE
+                          </div>
+                          <div class="min-w-0">
+                            <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(note.fileName)}</p>
+                            <p class="text-xs text-slate-400">${
+                              note.fileSize ? `${(note.fileSize / 1024).toFixed(1)} KB` : 'Attached file'
+                            }</p>
+                          </div>
+                        </div>
+                      </div>`
+                  : ''
+              }
+
+              <!-- Action Buttons for Teacher (OneNote Integration) -->
+              <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                <button
+                  data-action="copy-onenote"
+                  data-id="${note.id}"
+                  class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  <span class="pointer-events-none">Copy for OneNote</span>
+                </button>
+
+                ${
+                  note.fileName
+                    ? `<button
+                        data-action="download-file"
+                        data-id="${note.id}"
+                        class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span class="pointer-events-none">Download File</span>
+                      </button>`
+                    : ''
+                }
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+    }
+
+    // ==========================================
+    // NOTE ACTIONS (COPY, DOWNLOAD, DELETE, PREVIEW)
+    // ==========================================
+    notesListContainer.addEventListener('click', async (e) => {
+      const target = e.target.closest('[data-action]');
+      if (!target) return;
+
+      const action = target.getAttribute('data-action');
+      const noteId = target.getAttribute('data-id');
+      const note = notes.find((n) => n.id === noteId);
+      if (!note) return;
+
+      if (action === 'preview-image') {
+        const fileUrl = getFileDataUrl(note);
+        if (fileUrl) {
+          modalImageElement.src = fileUrl;
+          imageModal.classList.remove('hidden');
+        }
+      } else if (action === 'download-file') {
+        const fileUrl = getFileDataUrl(note);
+        if (!fileUrl) {
+          showToast('File is still loading, please wait a moment.', true);
+          return;
+        }
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.download = note.fileName || `${note.title.replace(/\s+/g, '_')}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast(`Downloaded "${note.fileName}"`);
+      } else if (action === 'copy-onenote') {
+        const fileUrl = getFileDataUrl(note);
+        const isImage = note.fileType && note.fileType.startsWith('image/');
+        const dateStr = new Date(note.createdAt || Date.now()).toLocaleString();
+
+        const htmlSnippet = `
+          <div style="font-family: 'Calibri', 'Segoe UI', sans-serif; color: #0f172a; max-width: 700px; padding: 12px;">
+            <h2 style="color: #6b21a8; font-size: 18pt; margin: 0 0 4px 0;">${escapeHtml(note.title)}</h2>
+            <p style="color: #64748b; font-size: 9.5pt; margin: 0 0 12px 0;">Uploaded ${escapeHtml(dateStr)}</p>
+            ${
+              note.textContent
+                ? `<div style="background: #f8fafc; border-left: 3px solid #6b21a8; padding: 10px 14px; margin-bottom: 14px; font-size: 11.5pt; white-space: pre-wrap;">${escapeHtml(
+                    note.textContent
+                  )}</div>`
+                : ''
+            }
+            ${
+              isImage && fileUrl
+                ? `<div><img src="${fileUrl}" alt="${escapeHtml(note.title)}" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 6px;" /></div>`
+                : note.fileName
+                ? `<p style="font-size: 10.5pt; color: #334155;">📎 Attached file: <b>${escapeHtml(note.fileName)}</b></p>`
+                : ''
+            }
+          </div>
+        `;
+
+        richCopyContainer.innerHTML = htmlSnippet;
+        richCopyContainer.style.display = 'block';
+
+        const range = document.createRange();
+        range.selectNodeContents(richCopyContainer);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+
+        try {
+          document.execCommand('copy');
+          showToast('Copied! Open OneNote and press Ctrl+V to paste.');
+        } catch (err) {
+          showToast('Could not copy automatically.', true);
+        } finally {
+          sel.removeAllRanges();
+          richCopyContainer.style.display = 'none';
+          richCopyContainer.innerHTML = '';
+        }
+      } else if (action === 'delete') {
+        try {
+          if (useCloudStorage && currentUser) {
+            const cList = chunksMap[noteId] || [];
+            for (let i = 0; i < cList.length; i++) {
+              await deleteDoc(
+                doc(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks', `${noteId}_chunk_${cList[i].chunkIndex}`)
+              );
+            }
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_notes', noteId));
+          } else {
+            notes = notes.filter((n) => n.id !== noteId);
+            renderNotes();
+          }
+          showToast('Note deleted.');
+        } catch (err) {
+          console.error('Delete failed:', err);
+          showToast('Could not delete note.', true);
+        }
+      }
+    });
+
+    closeImageModalBtn.addEventListener('click', () => {
+      imageModal.classList.add('hidden');
+      modalImageElement.src = '';
+    });
+    imageModal.addEventListener('click', (e) => {
+      if (e.target === imageModal) {
+        imageModal.classList.add('hidden');
+        modalImageElement.src = '';
+      }
+    });
+
+    // Start App
+    initStorage();
+  </script>
+</body>
+</html>
