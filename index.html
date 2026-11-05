@@ -6,6 +6,8 @@
   <title>Math Notes → OneNote</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js for client-side PDF -> crisp OneNote image rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +18,6 @@
       background-color: #f8fafc;
       color: #0f172a;
     }
-    /* Smooth custom scrollbar */
     ::-webkit-scrollbar {
       width: 6px;
       height: 6px;
@@ -32,7 +33,7 @@
 </head>
 <body class="min-h-screen antialiased selection:bg-purple-100 selection:text-purple-900">
 
-  <!-- Hidden container used for rich HTML clipboard copying into OneNote -->
+  <!-- Hidden container used for fallback rich HTML clipboard copying -->
   <div id="richCopyContainer" style="position: fixed; left: -9999px; top: 0; opacity: 0; pointer-events: none; display: none;"></div>
 
   <!-- Toast Notification -->
@@ -48,14 +49,13 @@
   <div id="lockScreen" class="min-h-screen flex items-center justify-center p-4 bg-slate-50">
     <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200/80 p-8">
       <div class="w-12 h-12 rounded-xl bg-purple-700 text-white flex items-center justify-center mx-auto mb-5 shadow-sm">
-        <!-- Notebook Icon -->
         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
         </svg>
       </div>
 
       <h1 class="text-xl font-bold text-center text-slate-900">Math Notes</h1>
-      <p class="text-sm text-center text-slate-500 mt-1 mb-6">Enter password to view or upload notes</p>
+      <p class="text-sm text-center text-slate-500 mt-1 mb-6">Enter password to view or upload PDF notes</p>
 
       <form id="passwordForm" class="space-y-4">
         <div>
@@ -94,11 +94,21 @@
           </div>
           <div>
             <h1 class="text-base font-bold text-slate-900 leading-tight">Math Notes → OneNote</h1>
-            <p id="syncStatusText" class="text-xs text-slate-400">Connecting...</p>
+            <p id="syncStatusText" class="text-xs text-slate-400">Connecting to Redis...</p>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
+          <button
+            id="refreshBtn"
+            title="Refresh from Redis"
+            class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+
           <button
             id="openUploadBtn"
             class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-sm font-semibold flex items-center gap-1.5 shadow-sm transition-all"
@@ -106,7 +116,7 @@
             <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
             </svg>
-            <span>Upload Note</span>
+            <span>Upload New PDF</span>
           </button>
 
           <button
@@ -127,8 +137,13 @@
 
       <!-- Collapsible Upload Card -->
       <section id="uploadSection" class="hidden bg-white rounded-2xl border border-slate-200/90 p-6 shadow-sm">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-base font-bold text-slate-900">New Math Note</h2>
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Upload PDF Note</h2>
+            <p class="text-xs text-amber-600 font-medium mt-0.5">
+              Uploading a new file will automatically replace and delete the previous note in Redis.
+            </p>
+          </div>
           <button id="closeUploadBtn" type="button" class="text-slate-400 hover:text-slate-600 p-1">
             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -136,7 +151,7 @@
           </button>
         </div>
 
-        <form id="uploadForm" class="space-y-4">
+        <form id="uploadForm" class="space-y-4 mt-4">
           <div>
             <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Title</label>
             <input
@@ -147,24 +162,24 @@
             />
           </div>
 
-          <!-- File Dropzone -->
+          <!-- File Dropzone (PDF primary, images also supported) -->
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">File (Photo, PDF, or Word Doc)</label>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">PDF Document (or Image)</label>
             <div id="fileDropArea" class="border-2 border-dashed border-slate-200 hover:border-purple-500 rounded-xl p-5 text-center bg-slate-50/50 transition-all">
               <label id="fileSelectLabel" class="cursor-pointer block">
                 <svg xmlns="http://www.w3.org/2000/svg" class="w-7 h-7 text-purple-600 mx-auto mb-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                 </svg>
-                <span class="text-sm font-semibold text-slate-700 block">Choose a file or photo</span>
-                <span class="text-xs text-slate-400 mt-0.5 block">Images (JPG, PNG), PDF, DOCX (Max 5 MB)</span>
-                <input id="fileInput" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.txt" class="hidden" />
+                <span class="text-sm font-semibold text-slate-700 block">Choose a PDF file</span>
+                <span class="text-xs text-slate-400 mt-0.5 block">Pages are automatically converted for instant OneNote paste (PDF, PNG, JPG)</span>
+                <input id="fileInput" type="file" accept=".pdf,application/pdf,.png,.jpg,.jpeg,.webp" class="hidden" />
               </label>
 
               <!-- Selected File Pill -->
               <div id="selectedFileBox" class="hidden items-center justify-between bg-white px-3.5 py-2.5 rounded-lg border border-slate-200 text-left">
                 <div class="min-w-0 pr-3">
                   <p id="selectedFileName" class="text-sm font-semibold text-slate-800 truncate"></p>
-                  <p id="selectedFileSize" class="text-xs text-slate-400"></p>
+                  <p id="selectedFileStatus" class="text-xs text-purple-700 font-medium"></p>
                 </div>
                 <button id="clearFileBtn" type="button" class="text-xs font-semibold text-red-600 hover:underline shrink-0">
                   Remove
@@ -175,10 +190,10 @@
 
           <!-- Optional Written Text -->
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Notes / Equations (Optional)</label>
+            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Notes / Comments (Optional)</label>
             <textarea
               id="noteTextInput"
-              rows="3"
+              rows="2"
               placeholder="Write any additional notes or formulas here..."
               class="w-full p-3.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:border-purple-600 transition-all"
             ></textarea>
@@ -197,15 +212,15 @@
               type="submit"
               class="px-5 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-sm font-semibold shadow-sm transition-all disabled:opacity-50"
             >
-              Save Note
+              Upload & Replace Old Note
             </button>
           </div>
         </form>
       </section>
 
-      <!-- Notes List Container -->
+      <!-- Active Note Container (Single Note Only) -->
       <section id="notesListContainer" class="space-y-4">
-        <div class="text-center py-12 text-sm text-slate-400">Loading notes...</div>
+        <div class="text-center py-12 text-sm text-slate-400">Loading active note from Redis...</div>
       </section>
     </main>
   </div>
@@ -226,27 +241,23 @@
   </div>
 
   <!-- ==========================================
-       4. APPLICATION LOGIC & FIREBASE SYNC
+       4. APPLICATION LOGIC (REDIS + PDF.JS + ONENOTE)
        ========================================== -->
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+  <script>
+    // Configure PDF.js worker
+    if (window.pdfjsLib) {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
 
-    // Constants
-    const CHUNK_SIZE = 650 * 1024; // ~650KB per chunk for Firestore 1MB limit
-    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    const PDF_CHUNK_SIZE = 700 * 1024; // ~700KB per Redis chunk for raw PDF
+    const RENDER_MAX_WIDTH = 1650;     // Crisp high-DPI width for OneNote math notes
 
-    // State
-    let db = null;
-    let auth = null;
-    let currentUser = null;
-    let useCloudStorage = false;
-    let notes = [];
-    let chunksMap = {};
-    let pendingFile = null;
-
-    const appId = typeof __app_id !== 'undefined' ? __app_id : 'math-onenote-clean-portal';
+    // State (Only a single active note exists at any time)
+    let activeNote = null;
+    let pendingFile = null; // { name, type, size, pages: [dataUrl, ...], pdfDataUrl: string|null }
+    let isRenderingPdf = false;
+    let pollInterval = null;
 
     // DOM Elements
     const lockScreen = document.getElementById('lockScreen');
@@ -255,6 +266,7 @@
     const passwordInput = document.getElementById('passwordInput');
     const passwordError = document.getElementById('passwordError');
     const lockBtn = document.getElementById('lockBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
     const syncStatusText = document.getElementById('syncStatusText');
 
     const openUploadBtn = document.getElementById('openUploadBtn');
@@ -268,7 +280,7 @@
     const fileSelectLabel = document.getElementById('fileSelectLabel');
     const selectedFileBox = document.getElementById('selectedFileBox');
     const selectedFileName = document.getElementById('selectedFileName');
-    const selectedFileSize = document.getElementById('selectedFileSize');
+    const selectedFileStatus = document.getElementById('selectedFileStatus');
     const clearFileBtn = document.getElementById('clearFileBtn');
     const submitNoteBtn = document.getElementById('submitNoteBtn');
 
@@ -278,7 +290,6 @@
     const modalImageElement = document.getElementById('modalImageElement');
     const closeImageModalBtn = document.getElementById('closeImageModalBtn');
 
-    // Toast Helper
     function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
       const toastBox = document.getElementById('toastBox');
@@ -290,10 +301,9 @@
       toast.classList.remove('hidden');
       setTimeout(() => {
         toast.classList.add('hidden');
-      }, 3200);
+      }, 3500);
     }
 
-    // Escape HTML safely
     function escapeHtml(str) {
       if (!str) return '';
       return String(str)
@@ -313,20 +323,69 @@
         passwordError.classList.add('hidden');
         lockScreen.classList.add('hidden');
         appScreen.classList.remove('hidden');
+        fetchCurrentNote();
+        startPolling();
       } else {
         passwordError.classList.remove('hidden');
       }
     });
 
     lockBtn.addEventListener('click', () => {
+      stopPolling();
       passwordInput.value = '';
       appScreen.classList.add('hidden');
       lockScreen.classList.remove('hidden');
       passwordInput.focus();
     });
 
+    refreshBtn.addEventListener('click', () => {
+      fetchCurrentNote(true);
+    });
+
+    function startPolling() {
+      stopPolling();
+      pollInterval = setInterval(() => {
+        fetchCurrentNote(false);
+      }, 7000);
+    }
+
+    function stopPolling() {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    }
+
     // ==========================================
-    // UPLOAD FORM UI HANDLERS
+    // REDIS API FETCH (GET SINGLE ACTIVE NOTE)
+    // ==========================================
+    async function fetchCurrentNote(manual = false) {
+      try {
+        if (manual) syncStatusText.textContent = 'Refreshing...';
+        const res = await fetch('/api/note');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        const prevId = activeNote ? activeNote.id : null;
+        const nextId = data.note ? data.note.id : null;
+
+        syncStatusText.textContent = 'Synced with Vercel Redis';
+
+        if (prevId !== nextId || manual) {
+          activeNote = data.note || null;
+          renderActiveNote();
+        }
+      } catch (err) {
+        console.error('Fetch note error:', err);
+        syncStatusText.textContent = 'Redis connection issue';
+        if (manual) showToast(err.message || 'Could not reach Redis API', true);
+      }
+    }
+
+    // ==========================================
+    // PDF & IMAGE PROCESSING FOR ONENOTE
     // ==========================================
     openUploadBtn.addEventListener('click', () => {
       uploadSection.classList.remove('hidden');
@@ -344,6 +403,7 @@
       noteTextInput.value = '';
       fileInput.value = '';
       pendingFile = null;
+      isRenderingPdf = false;
       selectedFileBox.classList.add('hidden');
       selectedFileBox.classList.remove('flex');
       fileSelectLabel.classList.remove('hidden');
@@ -352,449 +412,663 @@
     clearFileBtn.addEventListener('click', () => {
       fileInput.value = '';
       pendingFile = null;
+      isRenderingPdf = false;
       selectedFileBox.classList.add('hidden');
       selectedFileBox.classList.remove('flex');
       fileSelectLabel.classList.remove('hidden');
     });
 
-    fileInput.addEventListener('change', (e) => {
+    fileInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (file.size > MAX_FILE_SIZE) {
-        showToast('File is over 5 MB. Please pick a smaller file.', true);
-        return;
-      }
-
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const rawDataUrl = ev.target.result;
-
-        // Compress large images automatically for smooth OneNote copy/paste
-        if (file.type.startsWith('image/') && file.size > 700 * 1024) {
-          const img = new Image();
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxDim = 1600;
-            let w = img.width;
-            let h = img.height;
-            if (w > maxDim || h > maxDim) {
-              if (w > h) {
-                h = Math.round((h * maxDim) / w);
-                w = maxDim;
-              } else {
-                w = Math.round((w * maxDim) / h);
-                h = maxDim;
-              }
-            }
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, w, h);
-            const compressed = canvas.toDataURL('image/jpeg', 0.85);
-            setPendingFileObj({
-              name: file.name,
-              type: 'image/jpeg',
-              size: Math.round((compressed.length * 3) / 4),
-              dataUrl: compressed
-            });
-          };
-          img.src = rawDataUrl;
-        } else {
-          setPendingFileObj({
-            name: file.name,
-            type: file.type || 'application/octet-stream',
-            size: file.size,
-            dataUrl: rawDataUrl
-          });
-        }
-      };
-      reader.readAsDataURL(file);
-    });
-
-    function setPendingFileObj(fileObj) {
-      pendingFile = fileObj;
       if (!noteTitleInput.value.trim()) {
-        noteTitleInput.value = fileObj.name.replace(/\.[^/.]+$/, '');
+        noteTitleInput.value = file.name.replace(/\.[^/.]+$/, '');
       }
-      selectedFileName.textContent = fileObj.name;
-      selectedFileSize.textContent = `${(fileObj.size / 1024).toFixed(1)} KB`;
+
+      selectedFileName.textContent = file.name;
+      selectedFileStatus.textContent = 'Processing file for OneNote...';
       fileSelectLabel.classList.add('hidden');
       selectedFileBox.classList.remove('hidden');
       selectedFileBox.classList.add('flex');
-    }
 
-    // ==========================================
-    // FIREBASE INITIALIZATION
-    // ==========================================
-    async function initStorage() {
-      try {
-        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-          const firebaseConfig = JSON.parse(__firebase_config);
-          if (firebaseConfig && firebaseConfig.projectId) {
-            const app = initializeApp(firebaseConfig);
-            auth = getAuth(app);
-            db = getFirestore(app);
-            useCloudStorage = true;
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 
-            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-              await signInWithCustomToken(auth, __initial_auth_token);
-            } else {
-              await signInAnonymously(auth);
-            }
-
-            onAuthStateChanged(auth, (user) => {
-              currentUser = user;
-              if (user) {
-                syncStatusText.textContent = 'Synced with Teacher & Student';
-                subscribeToFirestore();
-              }
-            });
-            return;
-          }
-        }
-      } catch (err) {
-        console.error('Firebase init fallback:', err);
+      if (isPdf) {
+        await processPdfFile(file);
+      } else if (file.type.startsWith('image/')) {
+        await processImageFile(file);
+      } else {
+        showToast('Please select a PDF or image file.', true);
+        resetUploadForm();
       }
+    });
 
-      // If embedded externally without __firebase_config
-      syncStatusText.textContent = 'Ready';
-      renderNotes();
+    async function processPdfFile(file) {
+      isRenderingPdf = true;
+      submitNoteBtn.disabled = true;
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfDataUrl = await readFileAsDataUrl(file);
+
+        const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const numPages = pdf.numPages;
+        const renderedPages = [];
+
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          selectedFileStatus.textContent = `Rendering PDF page ${pageNum} of ${numPages} for OneNote...`;
+          const page = await pdf.getPage(pageNum);
+
+          // Calculate scale so page width is ~1650px (super sharp in OneNote)
+          const unscaledViewport = page.getViewport({ scale: 1 });
+          const scale = Math.min(2.5, Math.max(1.5, RENDER_MAX_WIDTH / unscaledViewport.width));
+          const viewport = page.getViewport({ scale });
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          const ctx = canvas.getContext('2d');
+
+          // Fill solid white background so transparent PDFs look clean in OneNote
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          await page.render({
+            canvasContext: ctx,
+            viewport
+          }).promise;
+
+          const pageDataUrl = canvas.toDataURL('image/jpeg', 0.88);
+          renderedPages.push(pageDataUrl);
+        }
+
+        pendingFile = {
+          name: file.name,
+          type: 'application/pdf',
+          size: file.size,
+          pages: renderedPages,
+          // Keep original PDF if <= 10MB so user can also download raw PDF
+          pdfDataUrl: file.size <= 10 * 1024 * 1024 ? pdfDataUrl : null
+        };
+
+        selectedFileStatus.textContent = `Ready: ${numPages} PDF ${numPages === 1 ? 'page' : 'pages'} (${(file.size / 1024).toFixed(0)} KB)`;
+      } catch (err) {
+        console.error('PDF render error:', err);
+        showToast('Failed to read PDF file. Make sure it is a valid PDF.', true);
+        resetUploadForm();
+      } finally {
+        isRenderingPdf = false;
+        submitNoteBtn.disabled = false;
+      }
     }
 
-    function subscribeToFirestore() {
-      if (!currentUser || !db) return;
+    async function processImageFile(file) {
+      isRenderingPdf = true;
+      submitNoteBtn.disabled = true;
+      try {
+        const rawDataUrl = await readFileAsDataUrl(file);
+        const compressed = await resizeImageDataUrl(rawDataUrl, RENDER_MAX_WIDTH, 0.88);
+        pendingFile = {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          pages: [compressed],
+          pdfDataUrl: null
+        };
+        selectedFileStatus.textContent = `Ready: 1 image (${(file.size / 1024).toFixed(0)} KB)`;
+      } catch (err) {
+        console.error('Image error:', err);
+        showToast('Failed to process image.', true);
+        resetUploadForm();
+      } finally {
+        isRenderingPdf = false;
+        submitNoteBtn.disabled = false;
+      }
+    }
 
-      const notesCol = collection(db, 'artifacts', appId, 'public', 'data', 'math_notes');
-      const chunksCol = collection(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks');
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
 
-      onSnapshot(
-        notesCol,
-        (snap) => {
-          notes = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          notes.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-          renderNotes();
-        },
-        (err) => console.error('Notes snapshot error:', err)
-      );
-
-      onSnapshot(
-        chunksCol,
-        (snap) => {
-          const map = {};
-          snap.docs.forEach((d) => {
-            const data = d.data();
-            if (data.noteId) {
-              if (!map[data.noteId]) map[data.noteId] = [];
-              map[data.noteId].push(data);
+    function resizeImageDataUrl(dataUrl, maxDim, quality = 0.88) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
             }
-          });
-          Object.keys(map).forEach((id) => {
-            map[id].sort((a, b) => a.chunkIndex - b.chunkIndex);
-          });
-          chunksMap = map;
-          renderNotes();
-        },
-        (err) => console.error('Chunks snapshot error:', err)
-      );
-    }
-
-    function getFileDataUrl(note) {
-      if (!note) return null;
-      if (note.inlineDataUrl) return note.inlineDataUrl;
-      if (!note.hasFileChunks) return null;
-      const cList = chunksMap[note.id];
-      if (!cList || cList.length < (note.totalChunks || 1)) return null;
-      return cList.map((c) => c.data).join('');
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.onerror = reject;
+        img.src = dataUrl;
+      });
     }
 
     // ==========================================
-    // UPLOAD / SAVE NOTE
+    // UPLOAD & REPLACE OLD NOTE IN REDIS
     // ==========================================
     uploadForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (isRenderingPdf) return;
+
       const title = noteTitleInput.value.trim() || (pendingFile ? pendingFile.name : 'Math Note');
       const textContent = noteTextInput.value.trim();
 
       if (!textContent && !pendingFile) {
-        showToast('Please attach a file or write a note.', true);
+        showToast('Please select a PDF file or write a note.', true);
         return;
       }
 
       submitNoteBtn.disabled = true;
-      submitNoteBtn.textContent = 'Uploading...';
+      submitNoteBtn.textContent = 'Deleting old & uploading...';
 
       try {
-        const noteId = `note_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-        let inlineDataUrl = null;
-        let hasFileChunks = false;
-        let totalChunks = 0;
+        const noteId = `note_${Date.now()}`;
+        const pages = pendingFile ? pendingFile.pages : [];
+        const pdfChunks = [];
 
-        if (pendingFile && pendingFile.dataUrl) {
-          const fullStr = pendingFile.dataUrl;
-          if (!useCloudStorage || fullStr.length <= 450 * 1024) {
-            inlineDataUrl = fullStr;
-          } else {
-            hasFileChunks = true;
-            const chunks = [];
-            for (let i = 0; i < fullStr.length; i += CHUNK_SIZE) {
-              chunks.push(fullStr.slice(i, i + CHUNK_SIZE));
-            }
-            totalChunks = chunks.length;
-
-            for (let idx = 0; idx < chunks.length; idx++) {
-              submitNoteBtn.textContent = `Uploading ${idx + 1}/${totalChunks}...`;
-              const chunkDocId = `${noteId}_chunk_${idx}`;
-              await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks', chunkDocId), {
-                noteId,
-                chunkIndex: idx,
-                data: chunks[idx],
-                createdAt: Date.now()
-              });
-            }
+        if (pendingFile && pendingFile.pdfDataUrl) {
+          const fullPdf = pendingFile.pdfDataUrl;
+          for (let i = 0; i < fullPdf.length; i += PDF_CHUNK_SIZE) {
+            pdfChunks.push(fullPdf.slice(i, i + PDF_CHUNK_SIZE));
           }
         }
 
-        const notePayload = {
+        const meta = {
+          id: noteId,
           title,
           textContent,
           fileName: pendingFile ? pendingFile.name : null,
           fileType: pendingFile ? pendingFile.type : null,
           fileSize: pendingFile ? pendingFile.size : null,
-          inlineDataUrl,
-          hasFileChunks,
-          totalChunks,
+          pageCount: pages.length,
+          pdfChunkCount: pdfChunks.length
+        };
+
+        // Estimate total size to decide single request vs sequential chunked upload
+        const totalChars =
+          pages.reduce((acc, p) => acc + p.length, 0) +
+          pdfChunks.reduce((acc, c) => acc + c.length, 0);
+
+        if (totalChars < 2.2 * 1024 * 1024) {
+          // Fast single-request replacement
+          const res = await fetch('/api/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'save_all',
+              meta,
+              pages,
+              pdfChunks
+            })
+          });
+          if (!res.ok) throw new Error('Upload failed');
+        } else {
+          // Step 1: Clear previous note in Redis
+          const initRes = await fetch('/api/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'init' })
+          });
+          if (!initRes.ok) throw new Error('Failed to initialize upload');
+
+          // Step 2: Upload each rendered page
+          for (let i = 0; i < pages.length; i++) {
+            submitNoteBtn.textContent = `Uploading page ${i + 1}/${pages.length}...`;
+            const pageRes = await fetch('/api/note', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'page',
+                index: i,
+                dataUrl: pages[i]
+              })
+            });
+            if (!pageRes.ok) throw new Error(`Failed on page ${i + 1}`);
+          }
+
+          // Step 3: Upload raw PDF chunks (for download button)
+          for (let i = 0; i < pdfChunks.length; i++) {
+            submitNoteBtn.textContent = `Saving PDF file (${i + 1}/${pdfChunks.length})...`;
+            await fetch('/api/note', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                action: 'pdf_chunk',
+                index: i,
+                data: pdfChunks[i]
+              })
+            });
+          }
+
+          // Step 4: Finalize metadata
+          const finRes = await fetch('/api/note', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'finalize',
+              meta
+            })
+          });
+          if (!finRes.ok) throw new Error('Failed to finalize note');
+        }
+
+        activeNote = {
+          ...meta,
+          pages,
           createdAt: Date.now()
         };
 
-        if (useCloudStorage && currentUser) {
-          await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_notes', noteId), notePayload);
-        } else {
-          notes.unshift({ id: noteId, ...notePayload });
-          renderNotes();
-        }
-
+        renderActiveNote();
         resetUploadForm();
         hideUploadSection();
-        showToast('Note uploaded!');
+        showToast('New PDF uploaded! Previous note was deleted.');
       } catch (err) {
         console.error('Upload error:', err);
-        showToast('Failed to upload note. Try a smaller file.', true);
+        showToast(err.message || 'Upload failed.', true);
       } finally {
         submitNoteBtn.disabled = false;
-        submitNoteBtn.textContent = 'Save Note';
+        submitNoteBtn.textContent = 'Upload & Replace Old Note';
       }
     });
 
     // ==========================================
-    // RENDER CLEAN NOTES LIST
+    // RENDER THE SINGLE ACTIVE NOTE
     // ==========================================
-    function renderNotes() {
-      if (notes.length === 0) {
+    function renderActiveNote() {
+      if (!activeNote) {
         notesListContainer.innerHTML = `
           <div class="bg-white rounded-2xl border border-slate-200/80 p-12 text-center">
-            <p class="text-base font-semibold text-slate-700">No math notes yet</p>
-            <p class="text-sm text-slate-400 mt-1">Click "Upload Note" at the top to add your first file or note.</p>
+            <p class="text-base font-semibold text-slate-700">No active PDF note in Redis</p>
+            <p class="text-sm text-slate-400 mt-1">Click "Upload New PDF" at the top to upload a file.</p>
           </div>
         `;
         return;
       }
 
-      notesListContainer.innerHTML = notes
-        .map((note) => {
-          const fileUrl = getFileDataUrl(note);
-          const isImage = note.fileType && note.fileType.startsWith('image/');
-          const dateStr = new Date(note.createdAt || Date.now()).toLocaleDateString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          });
+      const note = activeNote;
+      const pages = note.pages || [];
+      const dateStr = new Date(note.createdAt || Date.now()).toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
 
-          return `
-            <article class="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-xs hover:border-slate-300 transition-all space-y-4">
-              <!-- Note Header -->
-              <div class="flex items-start justify-between gap-4">
-                <div>
-                  <h3 class="text-base font-bold text-slate-900">${escapeHtml(note.title)}</h3>
-                  <p class="text-xs text-slate-400 mt-0.5">${escapeHtml(dateStr)}</p>
-                </div>
+      const pagesHtml = pages
+        .map(
+          (pageUrl, idx) => `
+          <div class="rounded-xl overflow-hidden border border-slate-200 bg-slate-100/70 p-3 space-y-2.5">
+            <div class="flex items-center justify-between px-1">
+              <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Page ${idx + 1} of ${pages.length}
+              </span>
+              <button
+                data-action="copy-single-page"
+                data-page-index="${idx}"
+                class="px-3 py-1.5 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-semibold flex items-center gap-1.5 transition-all"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span class="pointer-events-none">Copy Page ${idx + 1} for OneNote</span>
+              </button>
+            </div>
+            <div class="bg-white rounded-lg overflow-hidden border border-slate-200/80 flex items-center justify-center">
+              <img
+                src="${pageUrl}"
+                alt="Page ${idx + 1}"
+                data-action="preview-image"
+                data-page-index="${idx}"
+                class="max-h-[650px] w-auto object-contain cursor-zoom-in hover:opacity-95 transition-opacity"
+              />
+            </div>
+          </div>
+        `
+        )
+        .join('');
 
-                <button
-                  data-action="delete"
-                  data-id="${note.id}"
-                  title="Delete Note"
-                  class="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-
-              <!-- Written Note Content -->
-              ${
-                note.textContent
-                  ? `<div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">${escapeHtml(
-                      note.textContent
-                    )}</div>`
-                  : ''
-              }
-
-              <!-- File / Image Preview -->
-              ${
-                note.fileName
-                  ? isImage && fileUrl
-                    ? `<div class="rounded-xl overflow-hidden border border-slate-200 bg-slate-50 max-h-72 flex items-center justify-center">
-                        <img
-                          src="${fileUrl}"
-                          alt="${escapeHtml(note.title)}"
-                          data-action="preview-image"
-                          data-id="${note.id}"
-                          class="max-h-72 w-auto object-contain cursor-zoom-in hover:opacity-95 transition-opacity"
-                        />
-                      </div>`
-                    : `<div class="flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 border border-slate-200/80">
-                        <div class="flex items-center gap-3 min-w-0">
-                          <div class="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xs shrink-0">
-                            FILE
-                          </div>
-                          <div class="min-w-0">
-                            <p class="text-sm font-semibold text-slate-800 truncate">${escapeHtml(note.fileName)}</p>
-                            <p class="text-xs text-slate-400">${
-                              note.fileSize ? `${(note.fileSize / 1024).toFixed(1)} KB` : 'Attached file'
-                            }</p>
-                          </div>
-                        </div>
-                      </div>`
-                  : ''
-              }
-
-              <!-- Action Buttons for Teacher (OneNote Integration) -->
-              <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                <button
-                  data-action="copy-onenote"
-                  data-id="${note.id}"
-                  class="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-all"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
-                  <span class="pointer-events-none">Copy for OneNote</span>
-                </button>
-
+      notesListContainer.innerHTML = `
+        <article class="bg-white rounded-2xl border border-slate-200/90 p-6 shadow-xs space-y-5">
+          <!-- Note Header -->
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[11px] font-bold uppercase tracking-wide">
+                  Active Note
+                </span>
                 ${
-                  note.fileName
-                    ? `<button
-                        data-action="download-file"
-                        data-id="${note.id}"
-                        class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-all"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                        <span class="pointer-events-none">Download File</span>
-                      </button>`
+                  pages.length > 0
+                    ? `<span class="text-xs font-medium text-slate-500">${pages.length} ${
+                        pages.length === 1 ? 'page' : 'pages'
+                      }</span>`
                     : ''
                 }
               </div>
-            </article>
-          `;
-        })
-        .join('');
+              <h3 class="text-lg font-bold text-slate-900 mt-1">${escapeHtml(note.title)}</h3>
+              <p class="text-xs text-slate-400 mt-0.5">Uploaded ${escapeHtml(dateStr)} ${
+                note.fileName ? `• ${escapeHtml(note.fileName)}` : ''
+              }</p>
+            </div>
+
+            <button
+              data-action="delete"
+              title="Delete Current Note"
+              class="p-2 rounded-xl text-slate-400 hover:text-red-600 hover:bg-red-50 transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Top Action Bar for OneNote -->
+          <div class="p-3.5 rounded-xl bg-purple-50/70 border border-purple-200/70 flex flex-wrap items-center justify-between gap-3">
+            <div class="text-xs text-purple-950">
+              <p class="font-semibold">Ready to paste into OneNote (Ctrl+V)</p>
+              <p class="text-purple-700/80">Copies all PDF pages as a high-resolution printout directly to your clipboard.</p>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                data-action="copy-onenote-all"
+                class="px-4 py-2.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <span class="pointer-events-none">Copy All Pages for OneNote</span>
+              </button>
+
+              ${
+                note.pdfChunkCount && note.pdfChunkCount > 0
+                  ? `<button
+                      data-action="download-pdf"
+                      class="px-3.5 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      <span class="pointer-events-none">Download Original PDF</span>
+                    </button>`
+                  : ''
+              }
+            </div>
+          </div>
+
+          <!-- Written Note Content -->
+          ${
+            note.textContent
+              ? `<div class="p-4 rounded-xl bg-slate-50 border border-slate-200/70 text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">${escapeHtml(
+                  note.textContent
+                )}</div>`
+              : ''
+          }
+
+          <!-- Rendered PDF Pages -->
+          ${pages.length > 0 ? `<div class="space-y-4">${pagesHtml}</div>` : ''}
+        </article>
+      `;
     }
 
     // ==========================================
-    // NOTE ACTIONS (COPY, DOWNLOAD, DELETE, PREVIEW)
+    // ONENOTE CLIPBOARD ENGINE (HIGH-RES PNG + HTML)
+    // ==========================================
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
+
+    /**
+     * Builds a single crisp PNG Blob from one or more PDF page images (plus optional text note)
+     * and writes it directly to the OS clipboard as 'image/png'.
+     * OneNote Desktop and OneNote Web natively paste 'image/png' from clipboard as full-size
+     * annotatable page printouts when pressing Ctrl+V!
+     */
+    async function copyPagesAsOneNoteImage(pageUrls, title, textContent) {
+      const images = await Promise.all(pageUrls.map((url) => loadImage(url)));
+
+      const gap = 24;
+      const maxWidth = images.length > 0 ? Math.max(...images.map((im) => im.width)) : 1200;
+
+      // Calculate optional header height if written textContent is present
+      let headerHeight = 0;
+      const textLines = [];
+      if (textContent && textContent.trim()) {
+        const rawLines = textContent.trim().split('\n');
+        rawLines.forEach((line) => {
+          textLines.push(line);
+        });
+        headerHeight = 70 + textLines.length * 30 + 24;
+      }
+
+      const totalImagesHeight = images.reduce((sum, im) => sum + im.height, 0) + Math.max(0, images.length - 1) * gap;
+      const totalHeight = Math.max(120, headerHeight + totalImagesHeight);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = maxWidth;
+      canvas.height = totalHeight;
+      const ctx = canvas.getContext('2d');
+
+      // Clean white background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      let currentY = 0;
+
+      if (headerHeight > 0) {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, canvas.width, headerHeight - 12);
+        ctx.fillStyle = '#6b21a8';
+        ctx.fillRect(0, 0, 6, headerHeight - 12);
+
+        ctx.fillStyle = '#6b21a8';
+        ctx.font = 'bold 26px Inter, Segoe UI, sans-serif';
+        ctx.fillText(title || 'Math Note', 24, 38);
+
+        ctx.fillStyle = '#1e293b';
+        ctx.font = '22px Inter, Segoe UI, sans-serif';
+        textLines.forEach((line, idx) => {
+          ctx.fillText(line, 24, 76 + idx * 30);
+        });
+
+        currentY = headerHeight;
+      }
+
+      for (let i = 0; i < images.length; i++) {
+        const img = images[i];
+        const xOffset = Math.round((maxWidth - img.width) / 2);
+        ctx.drawImage(img, xOffset, currentY);
+        currentY += img.height;
+
+        // Subtle separator line between multi-page PDF pages
+        if (i < images.length - 1) {
+          ctx.strokeStyle = '#cbd5e1';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, currentY + gap / 2);
+          ctx.lineTo(maxWidth, currentY + gap / 2);
+          ctx.stroke();
+          currentY += gap;
+        }
+      }
+
+      const pngBlob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+
+      if (navigator.clipboard && window.ClipboardItem && pngBlob) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'image/png': pngBlob
+          })
+        ]);
+        return true;
+      }
+      return false;
+    }
+
+    // Fallback HTML copy if ClipboardItem image/png is unavailable
+    function fallbackHtmlCopy(note, pageIndices) {
+      const origin = window.location.origin;
+      const imgsHtml = pageIndices
+        .map(
+          (idx) =>
+            `<div style="margin-bottom: 16px;"><img src="${origin}/api/note?page=${idx}&t=${
+              note.createdAt || Date.now()
+            }" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0;" /></div>`
+        )
+        .join('');
+
+      richCopyContainer.innerHTML = `
+        <div style="font-family: 'Calibri', 'Segoe UI', sans-serif; color: #0f172a;">
+          <h2 style="color: #6b21a8; font-size: 16pt; margin: 0 0 8px 0;">${escapeHtml(note.title)}</h2>
+          ${
+            note.textContent
+              ? `<p style="font-size: 11.5pt; white-space: pre-wrap; margin-bottom: 12px;">${escapeHtml(
+                  note.textContent
+                )}</p>`
+              : ''
+          }
+          ${imgsHtml}
+        </div>
+      `;
+      richCopyContainer.style.display = 'block';
+      const range = document.createRange();
+      range.selectNodeContents(richCopyContainer);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      document.execCommand('copy');
+      sel.removeAllRanges();
+      richCopyContainer.style.display = 'none';
+      richCopyContainer.innerHTML = '';
+    }
+
+    // ==========================================
+    // NOTE ACTIONS (COPY ALL, COPY PAGE, DOWNLOAD, DELETE)
     // ==========================================
     notesListContainer.addEventListener('click', async (e) => {
       const target = e.target.closest('[data-action]');
-      if (!target) return;
+      if (!target || !activeNote) return;
 
       const action = target.getAttribute('data-action');
-      const noteId = target.getAttribute('data-id');
-      const note = notes.find((n) => n.id === noteId);
-      if (!note) return;
 
       if (action === 'preview-image') {
-        const fileUrl = getFileDataUrl(note);
-        if (fileUrl) {
-          modalImageElement.src = fileUrl;
+        const pageIdx = parseInt(target.getAttribute('data-page-index'), 10);
+        const pageUrl = activeNote.pages?.[pageIdx];
+        if (pageUrl) {
+          modalImageElement.src = pageUrl;
           imageModal.classList.remove('hidden');
         }
-      } else if (action === 'download-file') {
-        const fileUrl = getFileDataUrl(note);
-        if (!fileUrl) {
-          showToast('File is still loading, please wait a moment.', true);
-          return;
-        }
-        const a = document.createElement('a');
-        a.href = fileUrl;
-        a.download = note.fileName || `${note.title.replace(/\s+/g, '_')}`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        showToast(`Downloaded "${note.fileName}"`);
-      } else if (action === 'copy-onenote') {
-        const fileUrl = getFileDataUrl(note);
-        const isImage = note.fileType && note.fileType.startsWith('image/');
-        const dateStr = new Date(note.createdAt || Date.now()).toLocaleString();
-
-        const htmlSnippet = `
-          <div style="font-family: 'Calibri', 'Segoe UI', sans-serif; color: #0f172a; max-width: 700px; padding: 12px;">
-            <h2 style="color: #6b21a8; font-size: 18pt; margin: 0 0 4px 0;">${escapeHtml(note.title)}</h2>
-            <p style="color: #64748b; font-size: 9.5pt; margin: 0 0 12px 0;">Uploaded ${escapeHtml(dateStr)}</p>
-            ${
-              note.textContent
-                ? `<div style="background: #f8fafc; border-left: 3px solid #6b21a8; padding: 10px 14px; margin-bottom: 14px; font-size: 11.5pt; white-space: pre-wrap;">${escapeHtml(
-                    note.textContent
-                  )}</div>`
-                : ''
-            }
-            ${
-              isImage && fileUrl
-                ? `<div><img src="${fileUrl}" alt="${escapeHtml(note.title)}" style="max-width: 100%; height: auto; border: 1px solid #e2e8f0; border-radius: 6px;" /></div>`
-                : note.fileName
-                ? `<p style="font-size: 10.5pt; color: #334155;">📎 Attached file: <b>${escapeHtml(note.fileName)}</b></p>`
-                : ''
-            }
-          </div>
-        `;
-
-        richCopyContainer.innerHTML = htmlSnippet;
-        richCopyContainer.style.display = 'block';
-
-        const range = document.createRange();
-        range.selectNodeContents(richCopyContainer);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
+      } else if (action === 'copy-onenote-all') {
+        const pages = activeNote.pages || [];
+        const originalText = target.innerHTML;
+        target.disabled = true;
+        target.textContent = 'Preparing OneNote Printout...';
 
         try {
-          document.execCommand('copy');
+          if (pages.length > 0) {
+            const copiedPng = await copyPagesAsOneNoteImage(
+              pages,
+              activeNote.title,
+              activeNote.textContent
+            );
+            if (!copiedPng) {
+              fallbackHtmlCopy(
+                activeNote,
+                pages.map((_, i) => i)
+              );
+            }
+          } else {
+            fallbackHtmlCopy(activeNote, []);
+          }
           showToast('Copied! Open OneNote and press Ctrl+V to paste.');
         } catch (err) {
-          showToast('Could not copy automatically.', true);
+          console.error('Copy error:', err);
+          fallbackHtmlCopy(
+            activeNote,
+            (activeNote.pages || []).map((_, i) => i)
+          );
+          showToast('Copied! Press Ctrl+V in OneNote.');
         } finally {
-          sel.removeAllRanges();
-          richCopyContainer.style.display = 'none';
-          richCopyContainer.innerHTML = '';
+          target.disabled = false;
+          target.innerHTML = originalText;
+        }
+      } else if (action === 'copy-single-page') {
+        const pageIdx = parseInt(target.getAttribute('data-page-index'), 10);
+        const pageUrl = activeNote.pages?.[pageIdx];
+        if (!pageUrl) return;
+
+        const originalText = target.innerHTML;
+        target.disabled = true;
+        target.textContent = 'Copying...';
+
+        try {
+          const copiedPng = await copyPagesAsOneNoteImage([pageUrl], '', '');
+          if (!copiedPng) {
+            fallbackHtmlCopy(activeNote, [pageIdx]);
+          }
+          showToast(`Page ${pageIdx + 1} copied! Press Ctrl+V in OneNote.`);
+        } catch (err) {
+          console.error('Single page copy error:', err);
+          fallbackHtmlCopy(activeNote, [pageIdx]);
+          showToast(`Page ${pageIdx + 1} copied!`);
+        } finally {
+          target.disabled = false;
+          target.innerHTML = originalText;
+        }
+      } else if (action === 'download-pdf') {
+        target.disabled = true;
+        try {
+          showToast('Fetching original PDF...');
+          const res = await fetch('/api/note?downloadPdf=1');
+          if (!res.ok) throw new Error('Could not download PDF');
+          const data = await res.json();
+          if (data.pdfDataUrl) {
+            const a = document.createElement('a');
+            a.href = data.pdfDataUrl;
+            a.download = data.fileName || `${activeNote.title || 'note'}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+        } catch (err) {
+          showToast('Failed to download original PDF.', true);
+        } finally {
+          target.disabled = false;
         }
       } else if (action === 'delete') {
         try {
-          if (useCloudStorage && currentUser) {
-            const cList = chunksMap[noteId] || [];
-            for (let i = 0; i < cList.length; i++) {
-              await deleteDoc(
-                doc(db, 'artifacts', appId, 'public', 'data', 'math_note_chunks', `${noteId}_chunk_${cList[i].chunkIndex}`)
-              );
-            }
-            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'math_notes', noteId));
-          } else {
-            notes = notes.filter((n) => n.id !== noteId);
-            renderNotes();
-          }
-          showToast('Note deleted.');
+          const res = await fetch('/api/note', { method: 'DELETE' });
+          if (!res.ok) throw new Error('Failed to delete');
+          activeNote = null;
+          renderActiveNote();
+          showToast('Note deleted from Redis.');
         } catch (err) {
           console.error('Delete failed:', err);
           showToast('Could not delete note.', true);
@@ -812,9 +1086,6 @@
         modalImageElement.src = '';
       }
     });
-
-    // Start App
-    initStorage();
   </script>
 </body>
 </html>
