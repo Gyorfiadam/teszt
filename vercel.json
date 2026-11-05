@@ -1,7 +1,7 @@
 {
   "version": 2,
   "functions": {
-    "api/note.js": {
+    "note.js": {
       "maxDuration": 30
     }
   }
