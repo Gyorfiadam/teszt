@@ -1,0 +1,9 @@
+{
+  "name": "math-notes-onenote-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Math Notes PDF -> OneNote portal backed by Vercel Redis",
+  "dependencies": {
+    "ioredis": "^5.4.1"
+  }
+}
